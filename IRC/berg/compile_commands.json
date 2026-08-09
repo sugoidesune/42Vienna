@@ -1,0 +1,57 @@
+[
+  {
+    "directory": "/home/tbatis/core/berg",
+    "command": "c++ -g -Wall -Wextra -Werror -std=c++98 -fPIE -I. -c main.cpp",
+    "file": "/home/tbatis/core/berg/main.cpp"
+  },
+  {
+    "directory": "/home/tbatis/core/berg",
+    "command": "c++ -g -Wall -Wextra -Werror -std=c++98 -fPIE -I. -c Channel/Channel.cpp",
+    "file": "/home/tbatis/core/berg/Channel/Channel.cpp"
+  },
+  {
+    "directory": "/home/tbatis/core/berg",
+    "command": "c++ -g -Wall -Wextra -Werror -std=c++98 -fPIE -I. -c Client/Client.cpp",
+    "file": "/home/tbatis/core/berg/Client/Client.cpp"
+  },
+  {
+    "directory": "/home/tbatis/core/berg",
+    "command": "c++ -g -Wall -Wextra -Werror -std=c++98 -fPIE -I. -c Errorhandler/Errorhandler.cpp",
+    "file": "/home/tbatis/core/berg/Errorhandler/Errorhandler.cpp"
+  },
+  {
+    "directory": "/home/tbatis/core/berg",
+    "command": "c++ -g -Wall -Wextra -Werror -std=c++98 -fPIE -I. -c Server/Server.cpp",
+    "file": "/home/tbatis/core/berg/Server/Server.cpp"
+  },
+  {
+    "directory": "/home/tbatis/core/berg",
+    "command": "c++ -g -Wall -Wextra -Werror -std=c++98 -fPIE -I. -c Server/ServerSocket.cpp",
+    "file": "/home/tbatis/core/berg/Server/ServerSocket.cpp"
+  },
+  {
+    "directory": "/home/tbatis/core/berg",
+    "command": "c++ -g -Wall -Wextra -Werror -std=c++98 -fPIE -I. -c Server/ServerLoop.cpp",
+    "file": "/home/tbatis/core/berg/Server/ServerLoop.cpp"
+  },
+  {
+    "directory": "/home/tbatis/core/berg",
+    "command": "c++ -g -Wall -Wextra -Werror -std=c++98 -fPIE -I. -c Server/ServerCommands.cpp",
+    "file": "/home/tbatis/core/berg/Server/ServerCommands.cpp"
+  },
+  {
+    "directory": "/home/tbatis/core/berg",
+    "command": "c++ -g -Wall -Wextra -Werror -std=c++98 -fPIE -I. -c Server/ServerChannelOps.cpp",
+    "file": "/home/tbatis/core/berg/Server/ServerChannelOps.cpp"
+  },
+  {
+    "directory": "/home/tbatis/core/berg",
+    "command": "c++ -g -Wall -Wextra -Werror -std=c++98 -fPIE -I. -c Server/ServerMessaging.cpp",
+    "file": "/home/tbatis/core/berg/Server/ServerMessaging.cpp"
+  },
+  {
+    "directory": "/home/tbatis/core/berg",
+    "command": "c++ -g -Wall -Wextra -Werror -std=c++98 -fPIE -I. -c Server/ServerHelper.cpp",
+    "file": "/home/tbatis/core/berg/Server/ServerHelper.cpp"
+  }
+]
