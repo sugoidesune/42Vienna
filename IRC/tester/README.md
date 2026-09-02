@@ -2,21 +2,31 @@
 
 A comprehensive test framework for 42 IRC (`ircserv` / `ft_irc`).
 
-## Quick Start
 
-### 1. Start Your IRC Server
-From repository root:
+
+
+
+
+# Quick Start
 ```bash
-./ircserv 6667 1234
+cd tester && make help
 ```
 
-### 2. Enter Tester Directory & Build
-```bash
-cd tester
-make
-```
+#### Ignore tests via .testignore
+#### Tester will use running server or start its own.
 
-### 3. Run Tests
+#### Run Tests
+
+```bash
+#Simple
+
+make run
+
+#All at once on a single instance:
+make run parallel -i single
+
+
+
 The top-level `Makefile` is the single entry point for all tests:
 
 ```bash
