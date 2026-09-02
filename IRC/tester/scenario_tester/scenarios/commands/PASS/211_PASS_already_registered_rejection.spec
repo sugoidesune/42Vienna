@@ -1,0 +1,11 @@
+# 211_PASS_already_registered_rejection.spec
+# Sending PASS after registration is complete must return ERR_ALREADYREGISTRED (462)
+CLIENTS C1
+
+C1 SEND PASS 1234
+C1 SEND NICK PAlice211
+C1 SEND USER ali239 0 * :Ali239 Smith
+C1 EXPECT 001 PAlice211 :*
+
+C1 SEND PASS 1234
+C1 EXPECT 462 PAlice211 :You may not reregister

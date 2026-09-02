@@ -1,0 +1,17 @@
+CONTAINER = adminer
+STATUS_CMD = sh -c 'wget -q -O /dev/null http://127.0.0.1:8080/ && echo "http_status: 200"'
+
+include Makefile.cm
+
+# Adminer-specific commands
+probe:
+	$(COMPOSE) exec $(CONTAINER) wget -S -O /dev/null http://127.0.0.1:8080/
+
+pinglocal:
+	curl -k -I https://localhost -H "Host: adminer.tbatis.42.fr"
+
+pingweb:
+	domain=$$(grep -E '^DOMAIN_NAME=' srcs/.env 2>/dev/null | cut -d '=' -f2- | tr -d '"' | tr -d "'" | tr -d '\r'); \
+	curl -k -I "https://adminer.$${domain:-tbatis.42.fr}"
+
+.PHONY: probe pinglocal pingweb

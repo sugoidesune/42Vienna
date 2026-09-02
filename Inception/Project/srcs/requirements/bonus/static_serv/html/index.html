@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TV Static</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        /* Canvas for procedural static noise */
+        #tv-static {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            image-rendering: pixelated;
+            z-index: 1;
+        }
+
+        /* CRT Screen & Scanlines Overlay */
+        .crt-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 2;
+            background: 
+                linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.45) 50%),
+                linear-gradient(90deg, rgba(255, 0, 0, 0.04), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.04));
+            background-size: 100% 3px, 6px 100%;
+            box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.9), inset 0 0 40px rgba(0, 0, 0, 0.95);
+        }
+
+        /* Subtle flicker */
+        .crt-flicker {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 3;
+            background: rgba(255, 255, 255, 0.02);
+            animation: flicker 0.15s infinite;
+        }
+
+        @keyframes flicker {
+            0% { opacity: 0.85; }
+            50% { opacity: 1.0; }
+            100% { opacity: 0.9; }
+        }
+
+        /* Roll bar / VCR tracking artifact simulation */
+        .tracking-bar {
+            position: fixed;
+            left: 0;
+            width: 100vw;
+            height: 15vh;
+            background: linear-gradient(
+                to bottom,
+                transparent,
+                rgba(255, 255, 255, 0.08) 50%,
+                transparent
+            );
+            pointer-events: none;
+            z-index: 4;
+            animation: roll 12s linear infinite;
+        }
+
+        @keyframes roll {
+            0% { top: -20vh; }
+            100% { top: 120vh; }
+        }
+
+        /* Audio hint badge */
+        .audio-badge {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 10;
+            color: rgba(255, 255, 255, 0.4);
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 6px 12px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            transition: opacity 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="tv-static"></canvas>
+    <div class="crt-overlay"></div>
+    <div class="crt-flicker"></div>
+    <div class="tracking-bar"></div>
+    <div class="audio-badge" id="audio-badge">Click for static audio</div>
+
+    <script>
+        const canvas = document.getElementById('tv-static');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        const audioBadge = document.getElementById('audio-badge');
+
+        let width, height;
+        let imgData, data32;
+        const scale = 0.5; // Scaled resolution for authentic retro grain & performance
+
+        function resize() {
+            width = Math.ceil((window.innerWidth || document.documentElement.clientWidth) * scale);
+            height = Math.ceil((window.innerHeight || document.documentElement.clientHeight) * scale);
+            canvas.width = width;
+            canvas.height = height;
+            imgData = ctx.createImageData(width, height);
+            data32 = new Uint32Array(imgData.data.buffer);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Optimized TV static noise generator
+        function renderStatic() {
+            const len = data32.length;
+            
+            // Random noise loop with 32-bit pixel packing for maximum speed
+            for (let i = 0; i < len; i++) {
+                const shade = (Math.random() * 255) | 0;
+                // ABGR format: 0xFF000000 | (B << 16) | (G << 8) | R
+                data32[i] = 0xFF000000 | (shade << 16) | (shade << 8) | shade;
+            }
+
+            ctx.putImageData(imgData, 0, 0);
+            requestAnimationFrame(renderStatic);
+        }
+
+        requestAnimationFrame(renderStatic);
+
+        // Optional Web Audio White Noise Generator
+        let audioCtx = null;
+        let noiseNode = null;
+        let gainNode = null;
+        let isAudioPlaying = false;
+
+        function toggleAudio() {
+            if (!audioCtx) {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContextClass) return;
+                audioCtx = new AudioContextClass();
+
+                const bufferSize = audioCtx.sampleRate * 2;
+                const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const output = noiseBuffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = (Math.random() * 2 - 1) * 0.15;
+                }
+
+                noiseNode = audioCtx.createBufferSource();
+                noiseNode.buffer = noiseBuffer;
+                noiseNode.loop = true;
+
+                // Low-pass filter for warmer old TV speaker hiss
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = 3500;
+
+                gainNode = audioCtx.createGain();
+                gainNode.gain.value = 0.08;
+
+                noiseNode.connect(filter);
+                filter.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                noiseNode.start(0);
+                isAudioPlaying = true;
+                audioBadge.textContent = 'Audio: ON (Click to mute)';
+            } else {
+                if (isAudioPlaying) {
+                    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                    isAudioPlaying = false;
+                    audioBadge.textContent = 'Audio: OFF (Click to unmute)';
+                } else {
+                    gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                    isAudioPlaying = true;
+                    audioBadge.textContent = 'Audio: ON (Click to mute)';
+                }
+            }
+        }
+
+        document.body.addEventListener('click', toggleAudio);
+    </script>
+</body>
+</html>

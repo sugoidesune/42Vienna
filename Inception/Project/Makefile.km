@@ -1,0 +1,24 @@
+CONTAINER = uptime_kuma
+STATUS_CMD = curl -fsS -o /dev/null -w "http_status: %{http_code}\n" http://127.0.0.1:3001/
+VOLUME    = srcs_uptime_kuma_vol
+
+include Makefile.cm
+
+# uptime_kuma-specific commands
+data:
+	$(COMPOSE) exec $(CONTAINER) ls -la /app/data
+
+monitors:
+	$(COMPOSE) exec -T $(CONTAINER) python3 /app/tools/kuma_monitors.py
+
+probe:
+	$(COMPOSE) exec $(CONTAINER) curl -fsSI http://127.0.0.1:3001/
+
+pinglocal:
+	curl -k -I https://localhost -H "Host: kuma.tbatis.42.fr"
+
+pingweb:
+	domain=$$(grep -E '^DOMAIN_NAME=' srcs/.env 2>/dev/null | cut -d '=' -f2- | tr -d '"' | tr -d "'" | tr -d '\r'); \
+	curl -k -I "https://kuma.$${domain:-tbatis.42.fr}"
+
+.PHONY: data monitors probe pinglocal pingweb

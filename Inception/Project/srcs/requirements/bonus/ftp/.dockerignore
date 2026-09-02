@@ -1,0 +1,6 @@
+*
+!conf/
+!conf/vsftpd.conf.template
+!conf/vsftpd.pam
+!tools/
+!tools/init.sh

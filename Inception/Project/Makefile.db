@@ -1,0 +1,56 @@
+CONTAINER = mariadb
+VOLUME    = srcs_mariadb_vol
+BACKUP_DIR ?= ../backups
+BACKUP_FILE ?= $(BACKUP_DIR)/mariadb_backup.sql
+STATUS_CMD = sh -c 'mariadb-admin -u root -p"$$(cat /run/secrets/db_root_password)" status'
+
+include Makefile.cm
+
+# Interactive MariaDB Logins
+root:
+	$(COMPOSE) exec $(CONTAINER) mariadb -u root -p
+
+wpuser:
+	$(COMPOSE) exec $(CONTAINER) mariadb -h mariadb -u wpuser -p
+
+# Database Inspection Queries
+posts:
+	$(COMPOSE) exec -T $(CONTAINER) sh -c 'mariadb -u root -p"$$(cat /run/secrets/db_root_password)" -t -e "SELECT ID, post_title, post_status, post_author, post_date FROM wp_posts WHERE post_type = \"post\" ORDER BY ID DESC LIMIT 10;" wordpress'
+
+dbusr:
+	$(COMPOSE) exec -T $(CONTAINER) sh -c 'mariadb -u root -p"$$(cat /run/secrets/db_root_password)" -t -e "SELECT User, Host, plugin FROM mysql.user ORDER BY User, Host;"'
+
+wpusers:
+	$(COMPOSE) exec -T $(CONTAINER) sh -c 'mariadb -u root -p"$$(cat /run/secrets/db_root_password)" -t -e "SELECT ID, user_login, user_nicename, user_email, user_registered, display_name FROM wp_users;" wordpress'
+
+ping:
+	$(COMPOSE) exec -T $(CONTAINER) sh -c 'mariadb-admin ping -u root -p"$$(cat /run/secrets/db_root_password)"'
+
+databases:
+	$(COMPOSE) exec -T $(CONTAINER) sh -c 'mariadb -u root -p"$$(cat /run/secrets/db_root_password)" -t -e "SHOW DATABASES;"'
+
+tables:
+	$(COMPOSE) exec -T $(CONTAINER) sh -c 'mariadb -u root -p"$$(cat /run/secrets/db_root_password)" -t -e "SHOW TABLES;" wordpress'
+
+dbsize:
+	$(COMPOSE) exec -T $(CONTAINER) sh -c 'mariadb -u root -p"$$(cat /run/secrets/db_root_password)" -t -e "SELECT table_schema AS db, ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS size_mb FROM information_schema.tables GROUP BY table_schema ORDER BY size_mb DESC;"'
+
+dbconnections processlist:
+	$(COMPOSE) exec -T $(CONTAINER) sh -c 'mariadb -u root -p"$$(cat /run/secrets/db_root_password)" -t -e "SHOW FULL PROCESSLIST;"'
+
+# MariaDB Backup & Restore
+backup:
+	mkdir -p $(BACKUP_DIR)
+	echo "Creating MariaDB database backup -> $(BACKUP_FILE)..."
+	$(COMPOSE) exec -T $(CONTAINER) sh -c 'mariadb-dump -u root -p"$$(cat /run/secrets/db_root_password)" --all-databases' > $(BACKUP_FILE)
+	echo "Backup saved to $(BACKUP_FILE)"
+
+restore restorebackup:
+	test -f $(BACKUP_FILE) || (echo "Error: $(BACKUP_FILE) not found" && exit 1)
+	echo "Restoring MariaDB database from $(BACKUP_FILE)..."
+	$(COMPOSE) up -d $(CONTAINER) >/dev/null 2>&1
+	until $(COMPOSE) exec -T $(CONTAINER) sh -c 'mariadb-admin ping -u root -p"$$(cat /run/secrets/db_root_password)" --silent' >/dev/null 2>&1; do sleep 1; done
+	$(COMPOSE) exec -T $(CONTAINER) sh -c 'mariadb -u root -p"$$(cat /run/secrets/db_root_password)"' < $(BACKUP_FILE)
+	echo "Restore completed successfully."
+
+.PHONY: root wpuser posts dbusr wpusers ping databases tables dbsize dbconnections processlist backup restore restorebackup

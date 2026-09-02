@@ -1,0 +1,47 @@
+CONTAINER = nginx
+STATUS_CMD = sh -c 'nginx -t && nginx -v && curl -kfsS -o /dev/null -w "http_status: %{http_code}\n" https://127.0.0.1/'
+
+include Makefile.cm
+
+# NGINX-specific simple commands
+conftest:
+	$(COMPOSE) exec $(CONTAINER) nginx -t
+
+conf:
+	$(COMPOSE) exec $(CONTAINER) cat /etc/nginx/nginx.conf
+
+fullconf:
+	$(COMPOSE) exec $(CONTAINER) nginx -T
+
+routes upstreams:
+	$(COMPOSE) exec $(CONTAINER) sh -c 'nginx -T 2>&1 | grep -E "^[[:space:]]*(listen|server_name|location|proxy_pass|fastcgi_pass)[[:space:]]"'
+
+probe:
+	$(COMPOSE) exec $(CONTAINER) curl -kfsSI https://127.0.0.1/
+
+ssl:
+	$(COMPOSE) exec $(CONTAINER) ls -la /etc/nginx/ssl
+
+cert:
+	$(COMPOSE) exec $(CONTAINER) openssl x509 -in /etc/nginx/ssl/inception.crt -noout -subject -dates
+
+key:
+	$(COMPOSE) exec $(CONTAINER) cat /etc/nginx/ssl/inception.key
+
+pinglocal:
+	curl -k -I https://localhost
+
+pingweb:
+	domain=$$(grep -E '^DOMAIN_NAME=' srcs/.env 2>/dev/null | cut -d '=' -f2- | tr -d '"' | tr -d "'" | tr -d '\r'); \
+	curl -k -I "https://$${domain:-tbatis.42.fr}"
+
+tls1:
+	openssl s_client -connect localhost:443 -tls1_1 -cipher 'DEFAULT:@SECLEVEL=0' < /dev/null || true
+
+tls2:
+	openssl s_client -connect localhost:443 -tls1_2 < /dev/null
+
+tls3:
+	openssl s_client -connect localhost:443 -tls1_3 < /dev/null
+
+.PHONY: conftest conf fullconf routes upstreams probe ssl cert key pinglocal pingweb tls1 tls2 tls3

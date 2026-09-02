@@ -1,0 +1,157 @@
+COMPOSE   = docker compose -f srcs/docker-compose.yml
+CONTAINER ?=
+VOLUME    ?=
+STATUS_CMD ?=
+
+# Capture extra arguments passed on the command line
+EXTRA_ARGS = $(filter-out $@ cm ng db wp rd st km ad ft,$(MAKECMDGOALS))
+PS_ARGS    = $(if $(strip $(EXTRA_ARGS)),$(EXTRA_ARGS),-ef)
+
+all: up
+
+# Shared lifecycle commands (appends $(CONTAINER) automatically if set)
+build stop start restart logs:
+	$(COMPOSE) $@ $(EXTRA_ARGS) $(CONTAINER)
+
+log:
+	$(COMPOSE) logs --tail=10 $(EXTRA_ARGS) $(CONTAINER)
+
+up:
+	$(COMPOSE) up -d --build $(EXTRA_ARGS) $(CONTAINER)
+
+down:
+ifneq ($(CONTAINER),)
+	if echo "$(EXTRA_ARGS)" | grep -qE -- '(-v|--volumes)'; then \
+		$(COMPOSE) stop $(CONTAINER); \
+		$(COMPOSE) rm -f $(CONTAINER); \
+		if [ -n "$(VOLUME)" ]; then \
+			echo "Removing volume $(VOLUME)..."; \
+			docker volume rm -f $(VOLUME) 2>/dev/null || true; \
+		fi; \
+	else \
+		$(COMPOSE) stop $(CONTAINER); \
+		$(COMPOSE) rm -f $(CONTAINER); \
+	fi
+else
+	$(COMPOSE) down $(EXTRA_ARGS)
+endif
+
+rebuild:
+	$(COMPOSE) stop $(CONTAINER)
+	$(COMPOSE) build $(CONTAINER)
+	$(COMPOSE) up -d $(CONTAINER)
+
+ps:
+	$(COMPOSE) ps $(EXTRA_ARGS) $(CONTAINER)
+
+status:
+ifneq ($(CONTAINER),)
+ifneq ($(strip $(STATUS_CMD)),)
+	$(COMPOSE) exec $(CONTAINER) $(STATUS_CMD)
+else
+	$(COMPOSE) ps $(EXTRA_ARGS) $(CONTAINER)
+endif
+else
+	$(COMPOSE) ps $(EXTRA_ARGS)
+endif
+
+top:
+	$(COMPOSE) top $(EXTRA_ARGS) $(CONTAINER)
+
+pid pids:
+ifneq ($(CONTAINER),)
+	$(COMPOSE) exec $(CONTAINER) sh -c 'if command -v ps >/dev/null 2>&1; then ps $(PS_ARGS); else printf "%-8s %s\n" PID COMMAND; for process in /proc/[0-9]*; do pid=$${process##*/}; command=$$(tr "\000" " " < "$$process/cmdline"); if [ -z "$$command" ]; then command="[$$(cat "$$process/comm")]"; fi; printf "%-8s %s\n" "$$pid" "$$command"; done; fi'
+else
+	for service in $$($(COMPOSE) ps --services --status running); do \
+		echo "$$service:"; \
+		$(COMPOSE) exec -T "$$service" sh -c 'if command -v ps >/dev/null 2>&1; then ps $(PS_ARGS); else printf "%-8s %s\n" PID COMMAND; for process in /proc/[0-9]*; do pid=$${process##*/}; command=$$(tr "\000" " " < "$$process/cmdline"); if [ -z "$$command" ]; then command="[$$(cat "$$process/comm")]"; fi; printf "%-8s %s\n" "$$pid" "$$command"; done; fi'; \
+	done
+endif
+
+image images:
+	$(COMPOSE) images $(EXTRA_ARGS) $(CONTAINER)
+
+vol volume volumes:
+	docker volume ls $(EXTRA_ARGS)
+
+hosts:
+	$(COMPOSE) exec $(CONTAINER) getent hosts mariadb wordpress redis nginx static_serv uptime_kuma adminer ftp
+
+ports listening listeners:
+ifneq ($(CONTAINER),)
+	$(COMPOSE) exec $(CONTAINER) sh -c 'if command -v ss >/dev/null 2>&1; then ss -lntup; elif command -v netstat >/dev/null 2>&1; then netstat -lntu; else echo "No socket tool found; rebuild this image with iproute2 or net-tools." >&2; exit 1; fi'
+else
+	for service in $$($(COMPOSE) ps --services --status running); do \
+		echo "$$service:"; \
+		$(COMPOSE) exec -T "$$service" sh -c 'if command -v ss >/dev/null 2>&1; then ss -lntup; elif command -v netstat >/dev/null 2>&1; then netstat -lntu; else echo "No socket tool found; rebuild this image with iproute2 or net-tools." >&2; fi'; \
+	done
+endif
+
+connections conns communicating:
+ifneq ($(CONTAINER),)
+	$(COMPOSE) exec $(CONTAINER) sh -c 'if command -v ss >/dev/null 2>&1; then ss -ntup; elif command -v netstat >/dev/null 2>&1; then netstat -ntu; else echo "No socket tool found; rebuild this image with iproute2 or net-tools." >&2; exit 1; fi'
+else
+	for service in $$($(COMPOSE) ps --services --status running); do \
+		echo "$$service:"; \
+		$(COMPOSE) exec -T "$$service" sh -c 'if command -v ss >/dev/null 2>&1; then ss -ntup; elif command -v netstat >/dev/null 2>&1; then netstat -ntu; else echo "No socket tool found; rebuild this image with iproute2 or net-tools." >&2; fi'; \
+	done
+endif
+
+sockets net netstat:
+ifneq ($(CONTAINER),)
+	$(COMPOSE) exec $(CONTAINER) sh -c 'if command -v ss >/dev/null 2>&1; then ss -antup; elif command -v netstat >/dev/null 2>&1; then netstat -antu; else echo "No socket tool found; rebuild this image with iproute2 or net-tools." >&2; exit 1; fi'
+else
+	for service in $$($(COMPOSE) ps --services --status running); do \
+		echo "$$service:"; \
+		$(COMPOSE) exec -T "$$service" sh -c 'if command -v ss >/dev/null 2>&1; then ss -antup; elif command -v netstat >/dev/null 2>&1; then netstat -antu; else echo "No socket tool found; rebuild this image with iproute2 or net-tools." >&2; fi'; \
+	done
+endif
+
+exec:
+	$(COMPOSE) exec $(CONTAINER) $(EXTRA_ARGS)
+
+sh:
+	$(COMPOSE) exec $(CONTAINER) /bin/sh
+
+bash:
+	$(COMPOSE) exec $(CONTAINER) /bin/bash
+
+ifeq ($(CONTAINER),)
+# Root backup & restore (executes for both WordPress and MariaDB)
+backup:
+	$(MAKE) -f Makefile.wp backup
+	$(MAKE) -f Makefile.db backup
+
+restore restorebackup:
+	$(MAKE) -f Makefile.wp restorebackup
+	$(MAKE) -f Makefile.db restorebackup
+endif
+
+clean:
+	$(COMPOSE) down --remove-orphans $(EXTRA_ARGS)
+
+fclean:
+	$(COMPOSE) down --rmi all --remove-orphans $(EXTRA_ARGS)
+
+fcleanvolumesDANGEROUS: 
+	$(COMPOSE) down --volumes --rmi all --remove-orphans $(EXTRA_ARGS)
+
+nuke:
+	docker stop $$(docker ps -qa) 2>/dev/null || true
+	docker rm $$(docker ps -qa) 2>/dev/null || true
+	docker rmi -f $$(docker images -qa) 2>/dev/null || true
+	docker volume rm $$(docker volume ls -q) 2>/dev/null || true
+	docker network rm $$(docker network ls -q) 2>/dev/null || true
+
+nukecache:
+	docker builder prune -a -f 2>/dev/null || true
+
+inspectvol:
+	docker volume inspect $(if $(VOLUME),$(VOLUME),srcs_wordpress_vol srcs_mariadb_vol srcs_uptime_kuma_vol)
+
+re: fclean all
+
+%:
+	@:
+
+.PHONY: all build stop start restart logs log up down rebuild ps status pid pids top image images vol volume volumes hosts ports listening listeners connections conns communicating sockets net netstat exec sh bash backup restore restorebackup clean fclean fcleanvolumesDANGEROUS nuke inspectvol re

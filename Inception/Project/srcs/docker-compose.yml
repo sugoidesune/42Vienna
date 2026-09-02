@@ -1,0 +1,251 @@
+services:
+  mariadb:
+    container_name: mariadb
+
+    build:
+      context: ./requirements/mariadb
+      dockerfile: Dockerfile
+
+    image: mariadb:latina
+
+    env_file:
+      - .env
+
+    secrets:
+      - db_password
+      - db_root_password
+
+    volumes:
+      - mariadb_vol:/var/lib/mysql
+
+    networks:
+      - inception
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mariadb-admin ping --host=localhost -u root -p$$(cat /run/secrets/db_root_password) --silent || exit 1"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+    restart: unless-stopped
+
+  wordpress:
+    container_name: wordpress
+
+    build:
+      context: ./requirements/wordpress
+      dockerfile: Dockerfile
+
+    image: wordpress:ghostfacekilla
+
+    env_file:
+      - .env
+
+    secrets:
+      - db_password
+      - wp_admin_password
+      - wp_user_password
+
+    volumes:
+      - wordpress_vol:/var/www/html
+
+    networks:
+      - inception
+
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+  redis:
+    container_name: redis
+
+    build:
+      context: ./requirements/bonus/redis
+      dockerfile: Dockerfile
+
+    image: redis:cache
+
+    networks:
+      - inception
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+    restart: unless-stopped
+
+  nginx:
+    container_name: nginx
+
+    build:
+      context: ./requirements/nginx
+      dockerfile: Dockerfile
+
+    image: nginx:calibur
+
+    env_file:
+      - .env
+
+    secrets:
+      - ca_crt
+      - ca_key
+
+    ports:
+      - "443:443"
+
+    volumes:
+      - wordpress_vol:/var/www/html:ro
+
+    networks:
+      - inception
+
+    depends_on:
+      - wordpress
+      - static_serv
+      - uptime_kuma
+      - adminer
+
+    restart: unless-stopped
+
+  static_serv:
+    container_name: static_serv
+
+    build:
+      context: ./requirements/bonus/static_serv
+      dockerfile: Dockerfile
+
+    image: static_serv:surfer
+
+    networks:
+      - inception
+
+    restart: unless-stopped
+
+  uptime_kuma:
+    container_name: uptime_kuma
+
+    build:
+      context: ./requirements/bonus/uptime_kuma
+      dockerfile: Dockerfile
+
+    image: uptime_kuma:sentient
+
+    env_file:
+      - .env
+
+    secrets:
+      - kuma_password
+
+    volumes:
+      - uptime_kuma_vol:/app/data
+
+    networks:
+      - inception
+
+    post_start:
+      - command: python3 /app/tools/kuma_monitors.py
+
+    restart: unless-stopped
+
+  adminer:
+    container_name: adminer
+
+    build:
+      context: ./requirements/bonus/adminer
+      dockerfile: Dockerfile
+
+    image: adminer:6.0.1
+
+    networks:
+      - inception
+
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+  ftp:
+    container_name: ftp
+
+    build:
+      context: ./requirements/bonus/ftp
+      dockerfile: Dockerfile
+
+    image: ftp:vsftpd
+
+    env_file:
+      - .env
+
+    secrets:
+      - ftp_password
+
+    ports:
+      - "21:21"
+      - "21100-21110:21100-21110"
+
+    volumes:
+      - wordpress_vol:/var/www/html
+
+    networks:
+      - inception
+
+    depends_on:
+      - wordpress
+
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+    restart: unless-stopped
+
+secrets:
+
+  ca_crt:
+    file: ../secrets/ca.crt
+
+  ca_key:
+    file: ../secrets/ca.key
+
+  db_password:
+    file: ../secrets/db_password.txt
+
+  db_root_password:
+    file: ../secrets/db_root_password.txt
+
+  wp_admin_password:
+    file: ../secrets/wp_admin_password.txt
+
+  wp_user_password:
+    file: ../secrets/wp_user_password.txt
+
+  kuma_password:
+    file: ../secrets/kuma_password.txt
+
+  ftp_password:
+    file: ../secrets/ftp_password.txt
+
+volumes:
+  mariadb_vol:
+  wordpress_vol:
+  uptime_kuma_vol:
+
+networks:
+  inception:
+    driver: bridge
+

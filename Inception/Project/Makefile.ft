@@ -1,0 +1,17 @@
+CONTAINER = ftp
+STATUS_CMD = sh -c 'kill -0 1 && echo "ftp_status: running"'
+
+include Makefile.cm
+
+users:
+	$(COMPOSE) exec $(CONTAINER) sh -c 'getent passwd "$$FTP_USER"'
+
+config:
+	$(COMPOSE) exec $(CONTAINER) grep -Ev '^[[:space:]]*(#|$$)' /etc/vsftpd.conf
+
+# put file
+#ls
+upload:
+	ftp tbatis@localhost 21
+
+.PHONY: users config

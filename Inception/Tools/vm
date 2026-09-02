@@ -1,0 +1,251 @@
+#!/usr/bin/env bash
+
+# Configuration
+VM_NAME="Inception"
+VM_VBOX_PATH="$HOME/sgoinfre/inception_vm/vm/Inception/Inception.vbox"
+SSH_PORT="2222"
+SSH_USER="tbatis"
+SSH_HOST="127.0.0.1"
+MOUNT_DIR="$HOME/core/incepted_vm"
+
+usage() {
+    cat << 'HELP'
+Usage: vm <command>
+
+Commands:
+  start       Start the virtual machine
+  close       Save state and close the virtual machine
+  shutdown    Send ACPI shutdown signal to the virtual machine
+  off         Power off the virtual machine immediately
+  enter, ssh  SSH into the virtual machine
+  co          Open VS Code remote SSH session
+  mount       Mount VM filesystem via sshfs (root /)
+  permount    Mount VM home directory via sshfs with reconnect options
+  unmount     Unmount VM filesystem (fusermount3)
+  status      Show VM running status
+  snapshot    Take a snapshot: vm snapshot <name> [message/description]
+  snap-list   List snapshots: vm snap-list (or vm snap list)
+  snap-load   Restore snapshot: vm snap-load <name|uuid> (or vm snap load <name|uuid>)
+  snap-del    Delete snapshot: vm snap-del <name|uuid> (or vm snap del <name|uuid>)
+  help        Show this help message
+HELP
+}
+
+case "$1" in
+    start)
+        echo "Starting VM ($VM_NAME) headless..."
+        if command -v VBoxManage >/dev/null 2>&1; then
+            VBoxManage startvm "$VM_NAME" --type headless
+        elif command -v VBoxHeadless >/dev/null 2>&1; then
+            VBoxHeadless --startvm "$VM_NAME" &
+        else
+            echo "Error: VBoxManage is not available."
+            exit 1
+        fi
+        ;;
+
+    close)
+        echo "Saving VM state ($VM_NAME)..."
+        VBoxManage controlvm "$VM_NAME" savestate
+        ;;
+
+    shutdown)
+        echo "Sending ACPI shutdown signal to VM ($VM_NAME)..."
+        VBoxManage controlvm "$VM_NAME" acpipowerbutton
+        ;;
+
+    off|poweroff)
+        echo "Powering off VM ($VM_NAME)..."
+        VBoxManage controlvm "$VM_NAME" poweroff
+        ;;
+
+    proxy)
+        if pgrep -f "inception-proxy.js" >/dev/null 2>&1; then
+            echo "Proxy is already running on http://127.0.0.1:8080"
+        else
+            echo "Starting proxy on http://127.0.0.1:8080..."
+            PROXY_SCRIPT="$HOME/bin/inception-proxy.js"
+            [ ! -f "$PROXY_SCRIPT" ] && PROXY_SCRIPT="$HOME/core/incept/inception-proxy.js"
+            UV_THREADPOOL_SIZE=64 node "$PROXY_SCRIPT" >/dev/null 2>&1 &
+        fi
+        ;;
+
+    proxyoff)
+        echo "Stopping HTTPS proxy..."
+        pkill -f inception-proxy.js
+        ;;
+
+    enter|ssh)
+        ssh -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"
+        ;;
+
+    co)
+        echo "Opening VS Code Remote SSH..."
+        co --remote "ssh-remote+$SSH_USER@localhost:$SSH_PORT" "/home/$SSH_USER"
+        ;;
+
+    mount)
+        echo "Mounting $SSH_USER@localhost:/ to $MOUNT_DIR..."
+        mkdir -p "$MOUNT_DIR"
+        sshfs -p "$SSH_PORT" "$SSH_USER@localhost:/" "$MOUNT_DIR"
+        ;;
+
+    permount)
+        echo "Mounting $SSH_USER@localhost: to $MOUNT_DIR (with auto-reconnect)..."
+        mkdir -p "$MOUNT_DIR"
+        sshfs -p "$SSH_PORT" "$SSH_USER@localhost:" "$MOUNT_DIR" -o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3
+        ;;
+
+    unmount|umount)
+        echo "Unmounting $MOUNT_DIR..."
+        if command -v fusermount3 >/dev/null 2>&1; then
+            fusermount3 -u "$MOUNT_DIR"
+        elif command -v fusermount >/dev/null 2>&1; then
+            fusermount -u "$MOUNT_DIR"
+        else
+            umount "$MOUNT_DIR"
+        fi
+        ;;
+
+    status)
+        if command -v VBoxManage >/dev/null 2>&1; then
+            VBoxManage showvminfo "$VM_NAME" 2>/dev/null | grep -E "State:|Name:" || VBoxManage list runningvms
+        else
+            echo "VBoxManage is not available."
+        fi
+        ;;
+
+    snapshot|snap-take)
+        SNAP_NAME="$2"
+        if [ -z "$SNAP_NAME" ]; then
+            echo "Error: Snapshot name required."
+            echo "Usage: vm snapshot <name> [description/message]"
+            exit 1
+        fi
+        SNAP_DESC="${3:-}"
+        if [ -n "$SNAP_DESC" ]; then
+            echo "Taking snapshot '$SNAP_NAME' for VM ($VM_NAME) with description: \"$SNAP_DESC\"..."
+            VBoxManage snapshot "$VM_NAME" take "$SNAP_NAME" --description "$SNAP_DESC"
+        else
+            echo "Taking snapshot '$SNAP_NAME' for VM ($VM_NAME)..."
+            VBoxManage snapshot "$VM_NAME" take "$SNAP_NAME"
+        fi
+        ;;
+
+    snap-list)
+        echo "Listing snapshots for VM ($VM_NAME)..."
+        if [ -f "$VM_VBOX_PATH" ]; then
+            # Parse all snapshots (including nested parent/child trees) and descriptions from VM vbox config XML
+            awk '
+                /<Snapshot / {
+                    depth++
+                    uuid[depth] = ""
+                    name[depth] = ""
+                    time[depth] = ""
+                    desc[depth] = ""
+                    
+                    if (match($0, /uuid="\{?([^}"]+)\}?"/, m)) uuid[depth] = m[1]
+                    if (match($0, /name="([^"]+)"/, m)) name[depth] = m[1]
+                    if (match($0, /timeStamp="([^"]+)"/, m)) time[depth] = m[1]
+                    next
+                }
+                depth > 0 && /<Description>/ {
+                    gsub(/<\/?Description>/, "")
+                    gsub(/^[ \t]+|[ \t]+$/, "")
+                    desc[depth] = $0
+                    next
+                }
+                /<\/Snapshot>/ {
+                    if (depth > 0) {
+                        time_fmt = time[depth]
+                        gsub(/T/, " ", time_fmt)
+                        gsub(/Z/, " UTC", time_fmt)
+                        
+                        printf "  • %-26s  [%s]\n", name[depth], (time_fmt ? time_fmt : "No date")
+                        if (desc[depth] != "") {
+                            printf "    Message: %s\n", desc[depth]
+                        }
+                        printf "    UUID:    %s\n\n", uuid[depth]
+                        depth--
+                    }
+                }
+            ' "$VM_VBOX_PATH"
+        else
+            VBoxManage snapshot "$VM_NAME" list --details
+        fi
+        ;;
+
+    snap-load|snap-restore)
+        SNAP_TARGET="$2"
+        if [ -z "$SNAP_TARGET" ]; then
+            echo "Error: Snapshot name or UUID required."
+            echo "Usage: vm snap load <name|uuid>"
+            echo ""
+            echo "Available snapshots:"
+            VBoxManage snapshot "$VM_NAME" list 2>/dev/null
+            exit 1
+        fi
+        # Check if VM is currently running before restoring
+        if VBoxManage list runningvms | grep -q "\"$VM_NAME\""; then
+            echo "Powering off VM ($VM_NAME) before restoring snapshot..."
+            VBoxManage controlvm "$VM_NAME" poweroff
+            sleep 1
+        fi
+        echo "Restoring snapshot '$SNAP_TARGET' for VM ($VM_NAME)..."
+        if VBoxManage snapshot "$VM_NAME" restore "$SNAP_TARGET"; then
+            echo "Starting VM ($VM_NAME) headless..."
+            VBoxManage startvm "$VM_NAME" --type headless
+        fi
+        ;;
+
+    snap-del|snap-delete)
+        SNAP_TARGET="$2"
+        if [ -z "$SNAP_TARGET" ]; then
+            echo "Error: Snapshot name or UUID required."
+            echo "Usage: vm snap del <name|uuid>"
+            echo ""
+            echo "Available snapshots:"
+            VBoxManage snapshot "$VM_NAME" list 2>/dev/null
+            exit 1
+        fi
+        # Strictly delete snapshot only - prevent accidental VM deletion
+        echo "Deleting snapshot '$SNAP_TARGET' from VM ($VM_NAME)..."
+        VBoxManage snapshot "$VM_NAME" delete "$SNAP_TARGET"
+        ;;
+
+    snap)
+        case "$2" in
+            take|create)
+                shift 2
+                "$0" snapshot "$@"
+                ;;
+            list|ls)
+                shift 2
+                "$0" snap-list "$@"
+                ;;
+            load|restore)
+                shift 2
+                "$0" snap-load "$@"
+                ;;
+            del|delete|rm)
+                shift 2
+                "$0" snap-del "$@"
+                ;;
+            *)
+                echo "Usage: vm snap <list|load|del|take> [args...]"
+                exit 1
+                ;;
+        esac
+        ;;
+
+    help|--help|-h|"")
+        usage
+        ;;
+
+    *)
+        echo "Error: Unknown command '$1'"
+        echo ""
+        usage
+        exit 1
+        ;;
+esac

@@ -1,0 +1,43 @@
+CONTAINER = wordpress
+VOLUME    = srcs_wordpress_vol
+BACKUP_DIR ?= ../backups
+BACKUP_FILE ?= $(BACKUP_DIR)/wordpress_backup.tar.gz
+STATUS_CMD = sh -c 'printf "core_version: "; wp core version --allow-root --path=/var/www/html; printf "site_url: "; wp option get siteurl --allow-root --path=/var/www/html; printf "active_plugins:\n"; wp plugin list --status=active --fields=name,version --format=table --allow-root --path=/var/www/html'
+
+include Makefile.cm
+
+redis:
+	$(COMPOSE) exec $(CONTAINER) wp redis status --allow-root --path=/var/www/html
+
+version:
+	$(COMPOSE) exec $(CONTAINER) wp core version --allow-root --path=/var/www/html
+
+siteurl:
+	$(COMPOSE) exec $(CONTAINER) wp option get siteurl --allow-root --path=/var/www/html
+
+plugins:
+	$(COMPOSE) exec $(CONTAINER) wp plugin list --allow-root --path=/var/www/html
+
+themes:
+	$(COMPOSE) exec $(CONTAINER) wp theme list --allow-root --path=/var/www/html
+
+cron:
+	$(COMPOSE) exec $(CONTAINER) wp cron event list --allow-root --path=/var/www/html
+
+dbcheck:
+	$(COMPOSE) exec $(CONTAINER) wp db check --allow-root --path=/var/www/html
+
+# WordPress Volume Backup & Restore
+backup:
+	mkdir -p $(BACKUP_DIR)
+	echo "Creating WordPress volume backup -> $(BACKUP_FILE)..."
+	docker run --rm -v srcs_wordpress_vol:/vol -v $$(realpath $(BACKUP_DIR)):/backup debian:12 tar -czf /backup/wordpress_backup.tar.gz -C /vol .
+	echo "Backup saved to $(BACKUP_FILE)"
+
+restore restorebackup:
+	test -f $(BACKUP_FILE) || (echo "Error: $(BACKUP_FILE) not found" && exit 1)
+	echo "Restoring WordPress volume from $(BACKUP_FILE)..."
+	docker run --rm -v srcs_wordpress_vol:/vol -v $$(realpath $(BACKUP_DIR)):/backup debian:12 bash -c "rm -rf /vol/* && tar -xzf /backup/wordpress_backup.tar.gz -C /vol"
+	echo "Restore completed successfully."
+
+.PHONY: redis version siteurl plugins themes cron dbcheck backup restore restorebackup

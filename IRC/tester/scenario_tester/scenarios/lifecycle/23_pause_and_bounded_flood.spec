@@ -1,0 +1,24 @@
+# A paused client and bounded channel flood do not deadlock the server.
+CLIENTS C1, C2
+
+C1 SEND PASS 1234
+C1 SEND NICK Ali424
+C1 SEND USER ali424 0 * :Ali424
+C1 EXPECT 001 Ali424 :*
+
+C2 SEND PASS 1234
+C2 SEND NICK Bob424
+C2 SEND USER bob424 0 * :Bob424
+C2 EXPECT 001 Bob424 :*
+
+C1 SEND JOIN #flood
+C1 EXPECT :Ali424!* JOIN #flood
+C2 SEND JOIN #flood
+C2 WAIT_RECV :Bob424!* JOIN #flood
+C1 WAIT_RECV :Bob424!* JOIN #flood
+C2 PAUSE
+C1 FLOOD 10 PRIVMSG #flood :bounded
+C1 EXPECT_CONNECTED
+C2 RESUME
+C2 EXPECT_COUNT 10 PRIVMSG #flood :bounded
+C2 EXPECT_CONNECTED

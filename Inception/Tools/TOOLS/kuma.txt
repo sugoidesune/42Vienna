@@ -1,0 +1,46 @@
+Confirmed — both Alpine 3.19 and 3.20 ship Node.js 20.15.1 directly in their main repo, which satisfies Uptime Kuma's requirement of Node ≥ 20.4, and npm 10.x is included alongside it. That means a plain apk add nodejs npm on either version gets you a fully current, unmodified Uptime Kuma build with zero workarounds.
+Recommended Dockerfile (Alpine 3.20)
+
+text
+FROM alpine:3.20
+
+RUN apk add --no-cache nodejs npm git python3 make g++ curl
+
+RUN adduser -D kuma
+WORKDIR /app
+
+RUN git clone https://github.com/louislam/uptime-kuma.git . \
+    && npm run setup
+
+RUN chown -R kuma:kuma /app
+USER kuma
+
+VOLUME /app/data
+EXPOSE 3001
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD curl -f http://localhost:3001 || exit 1
+
+CMD ["node", "server/server.js"]
+
+Why each piece is there:
+
+    python3 make g++ — still needed even on modern Alpine, because Uptime Kuma's npm run setup compiles native modules (like sqlite3/better-sqlite3) against musl libc, and Alpine has no C++ toolchain by default.
+
+    git clone + npm run setup — this is Uptime Kuma's own official build path (their maintained dockerfile-alpine does the same: clone, install deps, build frontend), so it satisfies "build from source, no prebuilt image" cleanly .
+
+    No tag pin needed — since Node 20+ is native to the repo, you can safely track the current master/latest release instead of an old pinned version, which also means the modern UI and monitor types.
+
+    VOLUME /app/data — this is where Kuma's SQLite DB and settings live, satisfying Inception's "dedicated volume per service" rule.
+
+Compose Snippet
+
+text
+uptime-kuma:
+  build: ./requirements/uptime-kuma
+  container_name: uptime-kuma
+  volumes:
+    - uptime-kuma-data:/app/data
+  networks:
+    - inception
+  restart: unless-stopped

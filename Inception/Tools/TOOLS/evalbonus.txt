@@ -1,0 +1,14 @@
+Bonus
+
+For this project, the bonus part is intended to be simple. A Dockerfile must be written for each additional service. Thus, each service will run inside its own container and will have, if necessary, its dedicated volume. Evaluate the bonus part only if the mandatory part has been completed entirely and perfectly. Perfect means the mandatory part has been fully completed and functions without any malfunctions. If you have not passed ALL the mandatory requirements, your bonus part will not be evaluated at all.
+Bonus
+
+Bonus list:
+
+    Set up redis cache for your WordPress website in order to properly manage the cache.
+    Set up a FTP server container pointing to the volume of your WordPress website.
+    Create a simple static website in the language of your choice except PHP (yes, PHP is excluded). For example, a showcase site or a site for presenting your resume.
+    Set up Adminer.
+    Set up a service of your choice that you think is useful. During the defense, you will have to justify your choice. Add 1 point per bonus authorized in the subject. Verify and test the proper functioning and implementation of each additional service. For the free choice service, the evaluated student must provide a simple explanation of how it works and why they believe it is useful.
+
+Rate it from 0 (failed) through 5 (excellent)

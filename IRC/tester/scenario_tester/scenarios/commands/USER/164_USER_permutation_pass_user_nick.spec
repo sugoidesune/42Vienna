@@ -1,0 +1,12 @@
+# 164_USER_permutation_pass_user_nick.spec
+# Registration Permutation 2: PASS -> USER -> NICK
+CLIENTS C1
+
+C1 SEND PASS 1234
+C1 SEND USER ali386 0 * :Ali386 Smith
+C1 SEND NICK Ali386
+C1 EXPECT 001 Ali386 :*
+C1 EXPECT 002 Ali386 :*
+C1 EXPECT 003 Ali386 :*
+C1 EXPECT 004 Ali386 *
+C1 EXPECT_CONNECTED

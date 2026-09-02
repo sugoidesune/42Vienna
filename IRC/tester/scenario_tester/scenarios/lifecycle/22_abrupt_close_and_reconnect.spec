@@ -1,0 +1,28 @@
+# Abrupt client termination does not stop the server, and a new client can reuse the nick.
+CLIENTS C1, C2
+
+C1 SEND PASS 1234
+C1 SEND NICK Ali423
+C1 SEND USER ali423 0 * :Ali423
+C1 EXPECT 001 Ali423 :*
+
+C2 SEND PASS 1234
+C2 SEND NICK Bob423
+C2 SEND USER bob423 0 * :Bob423
+C2 EXPECT 001 Bob423 :*
+
+C1 SEND JOIN #lifecycle
+C1 EXPECT :Ali423!* JOIN #lifecycle
+C2 SEND JOIN #lifecycle
+C2 WAIT_RECV :Bob423!* JOIN #lifecycle
+C1 WAIT_RECV :Bob423!* JOIN #lifecycle
+C2 RESET
+C2 EXPECT_DISCONNECT
+C1 EXPECT_CONNECTED
+C1 SEND PRIVMSG Ali423 :server remains alive
+C2 RECONNECT
+C2 SEND PASS 1234
+C2 SEND NICK Bob423
+C2 SEND USER bob423 0 * :Bob423
+C2 EXPECT 001 Bob423 :*
+C2 EXPECT_CONNECTED

@@ -1,0 +1,5 @@
+*.o
+scenario_tester/testrunner
+standalone/concurrency_tester
+logs/
+.env
