@@ -13,7 +13,7 @@ If you only want to download the **IRC tester** (`IRC/tester`) into any target d
 Downloads directly into a folder named `tester` in your current directory:
 
 ```bash
-mkdir -p tester && curl -sSL https://github.com/sugoidesune/42Vienna/archive/refs/heads/master.tar.gz | tar -xz --strip-components=3 -C tester 42Vienna-master/IRC/tester
+mkdir -p tester && curl -sSL https://github.com/sugoidesune/42Vienna/archive/refs/heads/master.tar.gz | tar -xz --strip-components=3 -C tester 42Vienna-master/IRC/tester && cd tester && make help
 ```
 
 > **Targeting a custom location:** Replace `tester` with your preferred destination path (e.g. `path/to/destination`).
