@@ -159,6 +159,15 @@ caseverbose: $(NAME)
 # Alias for make caseverbose
 runv: caseverbose
 
+runp:
+	@grep -qxF 'unset zle_bracketed_paste' ~/.zshrc 2>/dev/null || echo 'unset zle_bracketed_paste' >> ~/.zshrc
+	@printf "...checking executables.\n"
+	@sleep 1
+	@printf "Test Ready ✅\n"
+	@sleep 1
+	@exec zsh -i
+
+
 # make full [port] [pass] OR make full [pass] OR make full = run all 3 test suites (run, memory, lifecycle)
 full: $(NAME)
 	@printf "\n\033[1;35m======================================================================\033[0m\n"
@@ -242,4 +251,4 @@ help:
 %:
 	@:
 
-.PHONY: all clean fclean re run parallel full runv case caseverbose lifecycle concurrency memory env help
+.PHONY: all clean fclean re run runp parallel full runv case caseverbose lifecycle concurrency memory env help

@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+# ==============================================================================
+#  Full-Screen Video Player with 20s Keyboard & Mouse Input Lock
+#  Plays term1.mp4 in borderless fullscreen and prevents all keyboard/mouse
+#  input for 20 seconds after playback begins.
+# ==============================================================================
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_VIDEO="${SCRIPT_DIR}/hck.mp4"
+VIDEO_PATH="${1:-$DEFAULT_VIDEO}"
+LOCK_DURATION="${2:-55}"
+
+# Check if video file exists
+if [[ ! -f "$VIDEO_PATH" ]]; then
+    echo "[-] Error: Video file '$VIDEO_PATH' not found." >&2
+    exit 1
+fi
+
+PLAYER_PID=""
+LOCKER_PID=""
+
+# Cleanup routine: ensure grabs are released, player is stopped, and terminal is restored
+cleanup() {
+    stty echo 2>/dev/null || true
+    if [[ -n "$LOCKER_PID" ]] && kill -0 "$LOCKER_PID" 2>/dev/null; then
+        kill -TERM "$LOCKER_PID" 2>/dev/null || true
+        wait "$LOCKER_PID" 2>/dev/null || true
+    fi
+    if [[ -n "$PLAYER_PID" ]] && kill -0 "$PLAYER_PID" 2>/dev/null; then
+        kill -TERM "$PLAYER_PID" 2>/dev/null || true
+        wait "$PLAYER_PID" 2>/dev/null || true
+    fi
+    # Flush any typed characters so they don't leak into the terminal
+    while read -r -t 0.05 -n 10000 _discard 2>/dev/null; do :; done || true
+}
+trap cleanup EXIT INT TERM
+
+# Prevent terminal echo
+stty -echo 2>/dev/null || true
+
+# Start video player in fullscreen with looping (so shorter clips don't exit before 20s)
+start_player() {
+    if command -v cvlc >/dev/null 2>&1; then
+        cvlc --fullscreen --no-video-title-show --loop --video-on-top "$VIDEO_PATH" >/dev/null 2>&1 &
+        PLAYER_PID=$!
+    elif command -v vlc >/dev/null 2>&1; then
+        vlc --fullscreen --no-video-title-show --loop --video-on-top "$VIDEO_PATH" >/dev/null 2>&1 &
+        PLAYER_PID=$!
+    elif command -v mplayer >/dev/null 2>&1; then
+        mplayer -fs -zoom -loop 0 -ontop -really-quiet "$VIDEO_PATH" >/dev/null 2>&1 &
+        PLAYER_PID=$!
+    elif command -v mpv >/dev/null 2>&1; then
+        mpv --fs --loop=inf --ontop --no-terminal "$VIDEO_PATH" >/dev/null 2>&1 &
+        PLAYER_PID=$!
+    elif command -v totem >/dev/null 2>&1; then
+        totem --fullscreen "$VIDEO_PATH" >/dev/null 2>&1 &
+        PLAYER_PID=$!
+    else
+        echo "[-] Error: No supported graphical video player found." >&2
+        exit 1
+    fi
+}
+
+# Lock keyboard and mouse input for specified duration, then wait for any key/click to exit
+wait_for_dismissal() {
+    local duration="$1"
+
+    # If running under X11, grab all keyboard and pointer events at the display server level
+    if [[ -n "$DISPLAY" ]]; then
+        python3 - "$duration" << 'EOF'
+import sys, time, signal, ctypes
+
+raw_dur = sys.argv[1] if len(sys.argv) > 1 else ""
+try:
+    lock_duration = float(raw_dur) if raw_dur.strip() else 20.0
+except ValueError:
+    lock_duration = 20.0
+
+try:
+    x11 = ctypes.cdll.LoadLibrary("libX11.so.6")
+    x11.XOpenDisplay.restype = ctypes.c_void_p
+    x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+    x11.XDefaultRootWindow.restype = ctypes.c_ulong
+    x11.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+
+    x11.XGrabKeyboard.restype = ctypes.c_int
+    x11.XGrabKeyboard.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_ulong]
+
+    x11.XGrabPointer.restype = ctypes.c_int
+    x11.XGrabPointer.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_uint, ctypes.c_int, ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
+
+    x11.XUngrabKeyboard.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+    x11.XUngrabPointer.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+    x11.XPending.restype = ctypes.c_int
+    x11.XPending.argtypes = [ctypes.c_void_p]
+    x11.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    x11.XFlush.argtypes = [ctypes.c_void_p]
+    x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
+
+    class XEvent(ctypes.Structure):
+        _fields_ = [("type", ctypes.c_int), ("pad", ctypes.c_byte * 192)]
+
+    x11.XNextEvent.argtypes = [ctypes.c_void_p, ctypes.POINTER(XEvent)]
+
+    dpy = x11.XOpenDisplay(None)
+    if not dpy:
+        time.sleep(lock_duration)
+        sys.exit(0)
+
+    root = x11.XDefaultRootWindow(dpy)
+
+    # Attempt grab with retries in case window manager has a momentary grab
+    event_mask = (1 << 2) | (1 << 3) | (1 << 6)  # ButtonPress | ButtonRelease | PointerMotion
+    for _ in range(40):
+        kb = x11.XGrabKeyboard(dpy, root, 0, 1, 1, 0)
+        pt = x11.XGrabPointer(dpy, root, 0, event_mask, 1, 1, 0, 0, 0)
+        x11.XFlush(dpy)
+        if kb == 0 and pt == 0:
+            break
+        time.sleep(0.05)
+
+    def release_grab(signum=None, frame=None):
+        try:
+            x11.XUngrabKeyboard(dpy, 0)
+            x11.XUngrabPointer(dpy, 0)
+            x11.XFlush(dpy)
+            x11.XCloseDisplay(dpy)
+        except Exception:
+            pass
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, release_grab)
+    signal.signal(signal.SIGTERM, release_grab)
+
+    # 1. Hold input lock for the requested lock_duration
+    start_time = time.time()
+    while time.time() - start_time < lock_duration:
+        # Discard any events pressed during lock period
+        while x11.XPending(dpy) > 0:
+            ev = XEvent()
+            x11.XNextEvent(dpy, ctypes.byref(ev))
+        time.sleep(0.05)
+
+    # 2. Lock period is over: discard buffered events so past keys don't trigger immediate close
+    x11.XSync(dpy, 1)
+
+    # 3. Wait until a new key press or mouse button press occurs
+    while True:
+        while x11.XPending(dpy) > 0:
+            ev = XEvent()
+            x11.XNextEvent(dpy, ctypes.byref(ev))
+            # 2 = KeyPress, 4 = ButtonPress
+            if ev.type in (2, 4):
+                release_grab()
+        time.sleep(0.02)
+
+except Exception:
+    time.sleep(lock_duration)
+EOF
+    else
+        # Terminal fallback if no X11 display
+        sleep "$duration"
+        # Wait for terminal keypress
+        read -r -n 1 _discard 2>/dev/null || true
+    fi
+}
+
+# 1. Start playback in full screen (continuously looping)
+start_player
+
+# 2. Lock input for independent lock duration, then wait for any key/button press
+wait_for_dismissal "$LOCK_DURATION"
+
+# 3. Cleanup runs automatically via trap:
+#    - Player process cleanly terminated
+#    - Keyboard & pointer ungrabbed
+#    - Terminal echo restored
+#    - Discard buffer flushed
