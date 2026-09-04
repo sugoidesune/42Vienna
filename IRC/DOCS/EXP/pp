@@ -8,7 +8,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEFAULT_VIDEO="${SCRIPT_DIR}/hck.mp4"
+DEFAULT_VIDEO="${SCRIPT_DIR}/hackterm.mp4"
 VIDEO_PATH="${1:-$DEFAULT_VIDEO}"
 LOCK_DURATION="${2:-55}"
 
